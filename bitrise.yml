@@ -2,32 +2,17 @@
 format_version: '11'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
-trigger_map:
-- push_branch: "*"
-  workflow: primary
-- pull_request_source_branch: "*"
-  workflow: primary
 workflows:
   primary:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@6: {}
-    - set-java-version@1:
-        inputs:
-        - set_java_version: '8'
-    - android-sdk-update@1:
-        inputs:
-        - platform_tools: stable
-        - build_tools: 31.0.0
-        - sdk_version: '30,31'
-        - tools: 'on'
-    - set-java-version@1: {}
     - certificate-and-profile-installer@1: {}
     - script@1:
-        title: Build MAUI App
+        title: Install .NET SDK
         inputs:
-        - content: |+
+        - content: |-
             #!/usr/bin/env bash
             # fail if any commands fails
             set -e
@@ -36,9 +21,38 @@ workflows:
 
             # Install .NET SDK
             curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --version 6.0.100-rc.2.21505.57
+    - script@1:
+        title: Install .NET MAUI workload
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
 
             # Install .NET MAUI Optional Workload (which installs android, ios, etc workloads)
             ~/.dotnet/dotnet workload install maui
+    - script@1:
+        title: Install missing Android components
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            sdkmanager --install "platforms;android-31"
+    - script@1:
+        title: Build Android app
+        inputs:
+        - content: |+
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
 
             # Android - Builds the .apk + .aab
             ~/.dotnet/dotnet publish ./BigIslandBarcode/BigIslandBarcode.csproj -f net6.0-android -c Release
@@ -46,7 +60,21 @@ workflows:
             cp ./BigIslandBarcode/bin/Release/net6.0-android/*-Signed.apk $BITRISE_DEPLOY_DIR 2>/dev/null
             cp ./BigIslandBarcode/bin/Release/net6.0-android/*-Signed.aab $BITRISE_DEPLOY_DIR 2>/dev/null
 
+
+    - script@1:
+        title: Build iOS app
+        inputs:
+        - content: |+
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
             # iOS- Builds the .ipa into the deploy path
             ~/.dotnet/dotnet publish ./BigIslandBarcode/BigIslandBarcode.csproj -f net6.0-ios -c Release -p:BuildIpa=True -p:IpaPackagePath=$BITRISE_DEPLOY_DIR/codes.redth.bigislandbarcode.ipa
 
     - deploy-to-bitrise-io@2: {}
+meta:
+  bitrise.io:
+    stack: osx-xcode-13.1.x
